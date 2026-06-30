@@ -1,0 +1,30 @@
+# Intelligent PDF Extractor Configuration
+
+extraction:
+  model: "gpt-4"
+  temperature: 0.3
+  max_tokens: 2000
+  timeout: 300
+  retry_attempts: 3
+
+pdf:
+  max_pages: 50
+  max_file_size: 50  # MB
+  supported_formats:
+    - ".pdf"
+    - ".PDF"
+
+excel:
+  format: "xlsx"
+  include_confidence: true
+  include_timestamp: true
+  sheet_name: "Extracted Data"
+
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/extractor.log"
+
+api:
+  openai_base_url: "https://api.openai.com/v1"
+  retry_timeout: 30
