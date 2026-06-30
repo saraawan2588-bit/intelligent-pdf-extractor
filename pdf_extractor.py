@@ -6,10 +6,22 @@ from datetime import datetime
 
 import pandas as pd
 import pdfplumber
-from langchain.chat_models import ChatOpenAI
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
 from dotenv import load_dotenv
+
+# Try importing Gemini first, fallback to OpenAI
+try:
+    from langchain_google_genai import ChatGoogleGenerativeAI
+    GEMINI_AVAILABLE = True
+except ImportError:
+    GEMINI_AVAILABLE = False
+
+try:
+    from langchain.chat_models import ChatOpenAI
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
 
 # Load environment variables
 load_dotenv()
@@ -21,31 +33,111 @@ logger = logging.getLogger(__name__)
 
 class IntelligentExtractor:
     """
-    Intelligent PDF Extractor using LangChain + GPT-4
+    Intelligent PDF Extractor using LangChain + Gemini (or OpenAI)
     Understands context and extracts specific data from PDFs
     """
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "gpt-4"):
+    def __init__(self, api_key: Optional[str] = None, model: str = "auto", provider: str = "auto"):
         """
         Initialize the extractor
         
         Args:
-            api_key: OpenAI API key (if None, uses OPENAI_API_KEY env var)
-            model: Model to use (default: gpt-4)
+            api_key: API key (Gemini or OpenAI, auto-detected if not provided)
+            model: Model to use (default: "auto" for auto-detection)
+            provider: "gemini", "openai", or "auto" for auto-detection
         """
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        self.provider = provider
         self.model = model
+        self.llm = None
         
-        if not self.api_key:
+        # Auto-detect provider and model
+        if provider == "auto":
+            self.provider = self._detect_provider()
+        
+        # Initialize appropriate LLM
+        if self.provider == "gemini":
+            self._init_gemini(api_key)
+        elif self.provider == "openai":
+            self._init_openai(api_key)
+        else:
+            raise ValueError(f"Unsupported provider: {self.provider}")
+        
+        logger.info(f"Initialized IntelligentExtractor with provider: {self.provider}, model: {self.model}")
+
+    def _detect_provider(self) -> str:
+        """
+        Auto-detect which provider to use based on available API keys
+        
+        Returns:
+            "gemini" or "openai"
+        """
+        gemini_key = os.getenv("GEMINI_API_KEY")
+        openai_key = os.getenv("OPENAI_API_KEY")
+        
+        if gemini_key and GEMINI_AVAILABLE:
+            logger.info("Using Gemini API (FREE)")
+            return "gemini"
+        elif openai_key and OPENAI_AVAILABLE:
+            logger.info("Using OpenAI API")
+            return "openai"
+        else:
+            # Default to Gemini if available
+            if GEMINI_AVAILABLE:
+                return "gemini"
+            elif OPENAI_AVAILABLE:
+                return "openai"
+            else:
+                raise ValueError("No API provider available. Install required packages.")
+
+    def _init_gemini(self, api_key: Optional[str] = None) -> None:
+        """
+        Initialize Google Gemini API
+        
+        Args:
+            api_key: Gemini API key (if None, uses GEMINI_API_KEY env var)
+        """
+        if not GEMINI_AVAILABLE:
+            raise ImportError("langchain_google_genai not installed. Run: pip install langchain-google-genai")
+        
+        api_key = api_key or os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            raise ValueError("Gemini API key not found. Set GEMINI_API_KEY environment variable.")
+        
+        model_name = self.model if self.model != "auto" else "gemini-pro"
+        
+        self.llm = ChatGoogleGenerativeAI(
+            google_api_key=api_key,
+            model=model_name,
+            temperature=0.3,
+            convert_system_message_to_human=True
+        )
+        self.provider = "gemini"
+        self.model = model_name
+
+    def _init_openai(self, api_key: Optional[str] = None) -> None:
+        """
+        Initialize OpenAI API
+        
+        Args:
+            api_key: OpenAI API key (if None, uses OPENAI_API_KEY env var)
+        """
+        if not OPENAI_AVAILABLE:
+            raise ImportError("openai not installed. Run: pip install openai")
+        
+        api_key = api_key or os.getenv("OPENAI_API_KEY")
+        if not api_key:
             raise ValueError("OpenAI API key not found. Set OPENAI_API_KEY environment variable.")
         
+        model_name = self.model if self.model != "auto" else "gpt-4"
+        
         self.llm = ChatOpenAI(
-            openai_api_key=self.api_key,
-            model_name=self.model,
+            openai_api_key=api_key,
+            model_name=model_name,
             temperature=0.3,
             max_tokens=2000
         )
-        logger.info(f"Initialized IntelligentExtractor with model: {self.model}")
+        self.provider = "openai"
+        self.model = model_name
 
     def extract_text_from_pdf(self, pdf_path: str) -> str:
         """
@@ -80,7 +172,7 @@ class IntelligentExtractor:
 
     def extract_with_ai(self, text: str, instructions: str) -> Dict:
         """
-        Use GPT-4 to intelligently extract data based on instructions
+        Use AI (Gemini/OpenAI) to intelligently extract data based on instructions
         
         Args:
             text: Text extracted from PDF
@@ -89,7 +181,7 @@ class IntelligentExtractor:
         Returns:
             Dictionary with extracted data
         """
-        logger.info(f"Using AI to extract data with instructions: {instructions}")
+        logger.info(f"Using {self.provider} to extract data with instructions: {instructions}")
         
         prompt_template = PromptTemplate(
             input_variables=["text", "instructions"],
@@ -173,6 +265,7 @@ Please extract the requested information and return ONLY valid JSON (no other te
             
             # Add metadata
             data['extraction_timestamp'] = datetime.now().isoformat()
+            data['provider'] = self.provider
             
             data.to_excel(output_path, index=False, sheet_name='Extracted Data')
             logger.info(f"Successfully saved to {output_path}")

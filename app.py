@@ -11,7 +11,7 @@ load_dotenv()
 # Page configuration
 st.set_page_config(
     page_title="Intelligent PDF Extractor",
-    page_icon="📄",
+    page_icon="🔤",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -31,25 +31,66 @@ st.markdown("""
 # Title and description
 st.title("🤖 Intelligent PDF Extractor")
 st.markdown("""
-Extract specific data from PDFs using **AI (GPT-4)** that understands context and implicit information.
+Extract specific data from PDFs using **AI (Gemini or GPT-4)** that understands context and implicit information.
+
+✨ **FREE**: Uses Google Gemini API (no credit card required!)
 """)
 
 # Sidebar
 with st.sidebar:
     st.header("⚙️ Configuration")
     
-    api_key = st.text_input(
-        "OpenAI API Key",
-        value=os.getenv("OPENAI_API_KEY", ""),
-        type="password",
-        help="Your OpenAI API key for GPT-4 access"
+    provider = st.radio(
+        "Choose AI Provider",
+        ["Auto-detect", "Google Gemini (FREE)", "OpenAI GPT-4"],
+        help="Auto-detect will use Gemini if available, otherwise OpenAI"
     )
     
-    model = st.selectbox(
-        "Model",
-        ["gpt-4", "gpt-3.5-turbo"],
-        help="Select the AI model to use"
-    )
+    # Determine provider and get API key
+    if provider == "Google Gemini (FREE)":
+        selected_provider = "gemini"
+        api_key = st.text_input(
+            "Google Gemini API Key",
+            value=os.getenv("GEMINI_API_KEY", ""),
+            type="password",
+            help="Get free API key from: https://makersuite.google.com/app/apikey"
+        )
+        model = st.selectbox(
+            "Model",
+            ["gemini-pro"],
+            help="Google Gemini Pro"
+        )
+    elif provider == "OpenAI GPT-4":
+        selected_provider = "openai"
+        api_key = st.text_input(
+            "OpenAI API Key",
+            value=os.getenv("OPENAI_API_KEY", ""),
+            type="password",
+            help="Your OpenAI API key"
+        )
+        model = st.selectbox(
+            "Model",
+            ["gpt-4", "gpt-3.5-turbo"],
+            help="Select OpenAI model"
+        )
+    else:  # Auto-detect
+        selected_provider = "auto"
+        gemini_key = os.getenv("GEMINI_API_KEY", "")
+        openai_key = os.getenv("OPENAI_API_KEY", "")
+        
+        if gemini_key:
+            api_key = gemini_key
+            st.success("✅ Using Gemini API (auto-detected)")
+        elif openai_key:
+            api_key = openai_key
+            st.info("ℹ️ Using OpenAI API (auto-detected)")
+        else:
+            api_key = st.text_input(
+                "API Key (Gemini or OpenAI)",
+                type="password",
+                help="Gemini: https://makersuite.google.com/app/apikey | OpenAI: https://platform.openai.com/api-keys"
+            )
+        model = "auto"
     
     temperature = st.slider(
         "Temperature",
@@ -66,7 +107,7 @@ with st.sidebar:
     )
 
 # Main content
-tabs = st.tabs(["📤 Single File", "📁 Batch Processing", "📚 Examples", "ℹ️ Help"])
+tabs = st.tabs(["📄 Single File", "📁 Batch Processing", "📚 Examples", "ℹ️ Help"])
 
 # Tab 1: Single File Extraction
 with tabs[0]:
@@ -94,7 +135,7 @@ with tabs[0]:
     # Processing button
     if st.button("🚀 Extract Data", type="primary", use_container_width=True):
         if not api_key:
-            st.error("❌ Please provide your OpenAI API key in the sidebar")
+            st.error("❌ Please provide an API key (Gemini or OpenAI)")
         elif not uploaded_file:
             st.error("❌ Please upload a PDF file")
         elif not extraction_instructions:
@@ -108,7 +149,11 @@ with tabs[0]:
                 
                 # Initialize extractor
                 with st.spinner("🔄 Initializing AI..."):
-                    extractor = IntelligentExtractor(api_key=api_key, model=model)
+                    extractor = IntelligentExtractor(
+                        api_key=api_key,
+                        model=model,
+                        provider=selected_provider
+                    )
                 
                 # Extract data
                 with st.spinner("📖 Reading PDF and extracting data..."):
@@ -120,6 +165,8 @@ with tabs[0]:
                 
                 # Display results
                 st.success("✅ Extraction completed successfully!")
+                st.markdown(f"**Provider**: {extractor.provider.upper()} | **Model**: {extractor.model}")
+                
                 st.subheader("📊 Extracted Data")
                 st.dataframe(result_df, use_container_width=True)
                 
@@ -178,7 +225,7 @@ with tabs[1]:
     
     if st.button("🚀 Process All PDFs", type="primary", use_container_width=True):
         if not api_key:
-            st.error("❌ Please provide your OpenAI API key")
+            st.error("❌ Please provide an API key")
         elif not uploaded_files:
             st.error("❌ Please upload PDF files")
         elif not batch_instructions:
@@ -194,7 +241,11 @@ with tabs[1]:
             
             try:
                 with st.spinner("🔄 Initializing AI..."):
-                    extractor = IntelligentExtractor(api_key=api_key, model=model)
+                    extractor = IntelligentExtractor(
+                        api_key=api_key,
+                        model=model,
+                        provider=selected_provider
+                    )
                 
                 with st.spinner(f"📖 Processing {len(temp_paths)} PDFs..."):
                     extractor.batch_extract_to_excel(
@@ -204,6 +255,7 @@ with tabs[1]:
                     )
                 
                 st.success("✅ Batch extraction completed!")
+                st.markdown(f"**Provider**: {extractor.provider.upper()} | **Model**: {extractor.model}")
                 
                 # Read and display results
                 results_df = pd.read_excel("batch_extraction_results.xlsx")
@@ -285,13 +337,18 @@ with tabs[2]:
 with tabs[3]:
     st.header("❓ Help & Documentation")
     
-    st.subheader("🔑 Getting Started")
+    st.subheader("🎯 Getting Started")
     st.write("""
-    1. **Get OpenAI API Key**: Visit https://platform.openai.com/api-keys
-    2. **Enable GPT-4**: Ensure your account has GPT-4 access
-    3. **Upload PDF**: Select your PDF file
-    4. **Specify What to Extract**: Write clear extraction instructions
-    5. **Download Results**: Get data as CSV or Excel
+    ### Option 1: Google Gemini (FREE - RECOMMENDED)
+    1. Visit: https://makersuite.google.com/app/apikey
+    2. Click "Create API Key"
+    3. Copy the key and paste in the sidebar
+    4. No credit card required!
+    
+    ### Option 2: OpenAI (Requires Payment)
+    1. Visit: https://platform.openai.com/api-keys
+    2. Create a new API key
+    3. Paste in the sidebar
     """)
     
     st.subheader("💡 Tips for Better Extraction")
@@ -304,18 +361,19 @@ with tabs[3]:
     """)
     
     st.subheader("⚠️ Limitations")
-    st.warning("""
-    - API calls cost money (monitor your OpenAI usage)
+    st.info("""
+    - **Gemini**: Free tier, some rate limits may apply
+    - **OpenAI**: API calls cost money (monitor your usage)
     - Works best with text-based PDFs
     - Large PDFs may take longer
-    - Your PDF is sent to OpenAI's servers
+    - Your PDF data is sent to the AI service
     """)
     
     st.subheader("🐛 Troubleshooting")
     st.write("""
     **Problem**: "Invalid API Key"
-    - Check that your OpenAI API key is correct
-    - Ensure you have GPT-4 access
+    - Double-check your API key is correct
+    - Ensure you're using the right provider's key
     
     **Problem**: "Poor extraction quality"
     - Make extraction instructions more specific
@@ -330,7 +388,8 @@ with tabs[3]:
 st.markdown("---")
 st.markdown("""
 <div style='text-align: center'>
-    <p>Made with ❤️ using Streamlit, LangChain & GPT-4</p>
+    <p>Made with ❤️ using Streamlit, LangChain & AI (Gemini/GPT-4)</p>
     <p><small>GitHub: <a href='https://github.com/saraawan2588-bit/intelligent-pdf-extractor'>intelligent-pdf-extractor</a></small></p>
+    <p><small>💚 Free option available with Google Gemini API</small></p>
 </div>
 """, unsafe_allow_html=True)
