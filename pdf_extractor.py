@@ -6,19 +6,17 @@ from datetime import datetime
 
 import pandas as pd
 import pdfplumber
-from langchain.prompts import PromptTemplate
-from langchain.chains import LLMChain
 from dotenv import load_dotenv
 
 # Try importing Gemini first, fallback to OpenAI
 try:
-    from langchain_google_genai import ChatGoogleGenerativeAI
+    import google.generativeai as genai
     GEMINI_AVAILABLE = True
 except ImportError:
     GEMINI_AVAILABLE = False
 
 try:
-    from langchain.chat_models import ChatOpenAI
+    import openai
     OPENAI_AVAILABLE = True
 except ImportError:
     OPENAI_AVAILABLE = False
@@ -105,12 +103,8 @@ class IntelligentExtractor:
         
         model_name = self.model if self.model != "auto" else "gemini-pro"
         
-        self.llm = ChatGoogleGenerativeAI(
-            google_api_key=api_key,
-            model=model_name,
-            temperature=0.3,
-            convert_system_message_to_human=True
-        )
+        genai.configure(api_key=api_key)
+        self.llm = genai.GenerativeModel(model_name)
         self.provider = "gemini"
         self.model = model_name
 
@@ -130,12 +124,7 @@ class IntelligentExtractor:
         
         model_name = self.model if self.model != "auto" else "gpt-4"
         
-        self.llm = ChatOpenAI(
-            openai_api_key=api_key,
-            model_name=model_name,
-            temperature=0.3,
-            max_tokens=2000
-        )
+        self.llm = openai.OpenAI(api_key=api_key)
         self.provider = "openai"
         self.model = model_name
 
@@ -182,10 +171,8 @@ class IntelligentExtractor:
             Dictionary with extracted data
         """
         logger.info(f"Using {self.provider} to extract data with instructions: {instructions}")
-        
-        prompt_template = PromptTemplate(
-            input_variables=["text", "instructions"],
-            template="""You are an intelligent document analysis assistant.
+
+        prompt = f"""You are an intelligent document analysis assistant.
 
 Your task is to carefully read the provided document text and extract ONLY the information requested.
 
@@ -203,23 +190,30 @@ Extraction Instructions:
 {instructions}
 
 Please extract the requested information and return ONLY valid JSON (no other text):"""
-        )
-        
-        chain = LLMChain(llm=self.llm, prompt=prompt_template)
-        
+
         try:
-            response = chain.run(text=text, instructions=instructions)
+            if self.provider == "gemini":
+                response = self.llm.generate_content(prompt)
+                response_text = response.text
+            else:
+                response = self.llm.chat.completions.create(
+                    model=self.model,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.3,
+                    max_tokens=2000
+                )
+                response_text = response.choices[0].message.content
+
             logger.info("AI extraction completed successfully")
-            
-            # Parse JSON response
-            extracted_data = json.loads(response)
+
+            extracted_data = json.loads(response_text)
             return extracted_data
-        
+
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse AI response as JSON: {str(e)}")
-            logger.error(f"Response: {response}")
-            return {"error": "Failed to parse extraction result", "raw_response": response}
-        
+            logger.error(f"Response: {response_text}")
+            return {"error": "Failed to parse extraction result", "raw_response": response_text}
+
         except Exception as e:
             logger.error(f"Error during AI extraction: {str(e)}")
             raise

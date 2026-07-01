@@ -1,25 +1,26 @@
 # Core Dependencies
-langchain==0.1.0
-langchain-google-genai==0.0.5
-google-generativeai==0.3.0
+langchain>=0.3.0,<0.4.0
+langchain-google-genai>=2.0.0,<3.0.0
+langchain-openai>=0.3.0,<0.4.0
+google-generativeai>=0.8.0
 python-dotenv==1.0.0
 pdfplumber==0.10.2
-pandas==2.1.1
-openpyxl==3.10.10
+pandas==2.3.3
+openpyxl==3.1.5
 
 # Web Interface
-streamlit==1.28.1
-streamlit-option-menu==0.3.2
+streamlit==1.58.0
+streamlit-option-menu==0.4.0
 
 # Utilities
 python-magic==0.4.27
-click==8.1.7
-typing-extensions==4.8.0
-requests==2.31.0
+click==8.4.2
+typing-extensions==4.15.0
+requests==2.34.2
 
 # Data Processing
-numpy==1.24.3
-pyarrow==13.0.0
+numpy==2.5.0
+pyarrow==24.0.0
 
 # Logging
 loguru==0.7.2
